@@ -23,8 +23,6 @@ on:
         required: false
         type: string
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.version || inputs.bump }}
-
 permissions:
   id-token: write
   contents: write
