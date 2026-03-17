@@ -356,6 +356,7 @@ function createGlobalSync() {
     setGlobalStore("reload", "pending")
     return globalSDK.client.global.config
       .update({ config })
+      .then(() => globalSDK.client.global.dispose())
       .then(bootstrap)
       .then(() => {
         queue.refresh()

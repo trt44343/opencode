@@ -4,10 +4,11 @@ import { Switch } from "@opencode-ai/ui/switch"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { TextField } from "@opencode-ai/ui/text-field"
-import { type Component, For, Show } from "solid-js"
+import { type Component, For, Show, createMemo } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useModels } from "@/context/models"
 import { popularProviders } from "@/hooks/use-providers"
+import { useGlobalSync } from "@/context/global-sync"
 import { SettingsList } from "./settings-list"
 
 type ModelItem = ReturnType<ReturnType<typeof useModels>["list"]>[number]
@@ -34,6 +35,52 @@ const ListEmptyState: Component<{ message: string; filter: string }> = (props) =
 export const SettingsModels: Component = () => {
   const language = useLanguage()
   const models = useModels()
+  const globalSync = useGlobalSync()
+
+  const modelImageSupport = createMemo(() => {
+    const config = globalSync.data.config.provider ?? {}
+    const support: Record<string, boolean> = {}
+    for (const [providerID, provider] of Object.entries(config)) {
+      if (provider.models) {
+        for (const [modelID, model] of Object.entries(provider.models)) {
+          const key = `${providerID}:${modelID}`
+          support[key] = model.modalities?.input?.includes("image") ?? false
+        }
+      }
+    }
+    return support
+  })
+
+  const setModelImageSupport = (providerID: string, modelID: string, enabled: boolean) => {
+    const current = globalSync.data.config.provider ?? {}
+    const provider = current[providerID] ?? {}
+    const model = provider.models?.[modelID] ?? {}
+    const modalities = model.modalities ?? { input: ["text"], output: ["text"] }
+    
+    if (enabled) {
+      if (!modalities.input.includes("image")) {
+        modalities.input = [...modalities.input, "image"]
+      }
+    } else {
+      modalities.input = modalities.input.filter(m => m !== "image")
+    }
+    
+    globalSync.updateConfig({
+      provider: {
+        ...current,
+        [providerID]: {
+          ...provider,
+          models: {
+            ...provider.models,
+            [modelID]: {
+              ...model,
+              modalities,
+            },
+          },
+        },
+      },
+    })
+  }
 
   const list = useFilteredList<ModelItem>({
     items: (_filter) => models.list(),
@@ -105,12 +152,26 @@ export const SettingsModels: Component = () => {
                     <For each={group.items}>
                       {(item) => {
                         const key = { providerID: item.provider.id, modelID: item.id }
+                        const imageKey = `${item.provider.id}:${item.id}`
+                        const hasImageSupport = createMemo(() => modelImageSupport()[imageKey])
                         return (
                           <div class="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-border-weak-base last:border-none">
                             <div class="min-w-0">
                               <span class="text-14-regular text-text-strong truncate block">{item.name}</span>
                             </div>
-                            <div class="flex-shrink-0">
+                            <div class="flex items-center gap-4">
+                              <div class="flex items-center gap-2" title={language.t("settings.models.imageSupport")}>
+                                <Icon name="photo" class="text-icon-weak-base size-4" />
+                                <Switch
+                                  checked={hasImageSupport()}
+                                  onChange={(checked) => {
+                                    setModelImageSupport(item.provider.id, item.id, checked)
+                                  }}
+                                  hideLabel
+                                >
+                                  {language.t("settings.models.imageSupport")}
+                                </Switch>
+                              </div>
                               <Switch
                                 checked={models.visible(key)}
                                 onChange={(checked) => {
